@@ -1,0 +1,97 @@
+services:
+  node0:
+    build: .
+    image: lsmkv:latest
+    container_name: lsmkv-node0
+    environment:
+      LSMKV_NODE_INDEX: "0"
+    ports:
+      - "7001:7001"
+      - "9001:9001"
+    volumes:
+      - node0_data:/app/data/node0
+    networks:
+      - lsmkv_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost',7001),2); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  node1:
+    image: lsmkv:latest
+    container_name: lsmkv-node1
+    environment:
+      LSMKV_NODE_INDEX: "1"
+    ports:
+      - "7002:7002"
+      - "9002:9002"
+    volumes:
+      - node1_data:/app/data/node1
+    networks:
+      - lsmkv_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost',7002),2); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  node2:
+    image: lsmkv:latest
+    container_name: lsmkv-node2
+    environment:
+      LSMKV_NODE_INDEX: "2"
+    ports:
+      - "7003:7003"
+      - "9003:9003"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost',7003),2); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - node2_data:/app/data/node2
+    networks:
+      - lsmkv_net
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: lsmkv-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - lsmkv_net
+    depends_on:
+      - node0
+      - node1
+      - node2
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: lsmkv-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "lsmkv"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - lsmkv_net
+    depends_on:
+      - prometheus
+
+volumes:
+  node0_data:
+  node1_data:
+  node2_data:
+  grafana_data:
+
+networks:
+  lsmkv_net:
+    driver: bridge

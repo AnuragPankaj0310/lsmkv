@@ -1,0 +1,60 @@
+name: LSMKV CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "feature/**"
+
+  pull_request:
+    branches:
+      - main
+      - develop
+
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint (Ruff)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Type Check (MyPy)
+        run: |
+          mypy . --ignore-missing-imports || true
+
+      - name: Run Tests
+        run: |
+          python -m pytest -v --tb=short
+
+      - name: Build Docker Image
+        run: |
+          docker build -t lsmkv:ci .
+
+      - name: Validate Docker Compose
+        run: |
+          docker compose config

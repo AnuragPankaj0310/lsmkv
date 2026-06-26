@@ -1,0 +1,20 @@
+{
+  "memtable_size_bytes": 4194304,
+  "sparse_interval": 128,
+  "bloom_fp_rate": 0.01,
+  "compaction_interval_seconds": 30,
+  "l0_compaction_trigger": 4,
+  "replication_factor": 2,
+  "heartbeat_interval_seconds": 2,
+  "heartbeat_missed_threshold": 3,
+  "server_host": "0.0.0.0",
+  "server_port": 7001,
+  "metrics_port": 9001,
+  "nodes": [
+    "node0:7001",
+    "node1:7002",
+    "node2:7003"
+  ],
+  "virtual_nodes": 150,
+  "ttl_sweep_interval_seconds": 10
+}

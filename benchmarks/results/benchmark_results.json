@@ -1,0 +1,38 @@
+[
+  {
+    "name": "LSMKV \u2014 100% Writes",
+    "ops": 10000,
+    "elapsed_sec": 28.311,
+    "throughput_ops_sec": 353.2,
+    "p50_ms": 2.519,
+    "p95_ms": 4.348,
+    "p99_ms": 6.43
+  },
+  {
+    "name": "LSMKV \u2014 100% Reads (warm)",
+    "ops": 10000,
+    "elapsed_sec": 3.713,
+    "throughput_ops_sec": 2693.3,
+    "p50_ms": 0.345,
+    "p95_ms": 0.501,
+    "p99_ms": 0.699
+  },
+  {
+    "name": "LSMKV \u2014 80% Read / 20% Write",
+    "ops": 10000,
+    "elapsed_sec": 8.317,
+    "throughput_ops_sec": 1202.4,
+    "p50_ms": 0.412,
+    "p95_ms": 2.567,
+    "p99_ms": 3.001
+  },
+  {
+    "name": "LSMKV \u2014 High Miss Rate (30%)",
+    "ops": 10000,
+    "elapsed_sec": 4.013,
+    "throughput_ops_sec": 2492.1,
+    "p50_ms": 0.379,
+    "p95_ms": 0.54,
+    "p99_ms": 0.77
+  }
+]
