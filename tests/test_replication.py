@@ -1,12 +1,12 @@
 """Replication module tests (unit-level, no live server)."""
+
 from __future__ import annotations
-
-
 
 
 def test_replication_module_imports():
     """Basic smoke test that the module loads."""
     from distributed.replication import ReplicationError, replicate_to
+
     assert ReplicationError is not None
     assert callable(replicate_to)
 

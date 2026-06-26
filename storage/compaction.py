@@ -20,6 +20,7 @@ K-Way Merge:
 Write Amplification monitoring:
   bytes_written_by_compaction / bytes_written_by_client
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,6 +41,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # K-Way Merge Iterator
 # ---------------------------------------------------------------------------
+
 
 def _kway_merge(
     sstables: list[SSTable],
@@ -76,7 +78,9 @@ def _kway_merge(
         winner_seq = seq
 
         while heap and heap[0][0] == key:
-            dup_key, dup_neg_seq, dup_val, dup_exp, dup_tomb, dup_seq, dup_it = heapq.heappop(heap)
+            dup_key, dup_neg_seq, dup_val, dup_exp, dup_tomb, dup_seq, dup_it = (
+                heapq.heappop(heap)
+            )
             if dup_seq > winner_seq:
                 winner_val, winner_exp, winner_tomb = dup_val, dup_exp, dup_tomb
                 winner_seq = dup_seq
@@ -111,6 +115,7 @@ def _kway_merge(
 # ---------------------------------------------------------------------------
 # Compaction Engine
 # ---------------------------------------------------------------------------
+
 
 class CompactionEngine:
     """
@@ -190,7 +195,9 @@ class CompactionEngine:
         new_seq = self._registry.next_sequence()
         out_path = self._dir / f"sst_{new_seq:07d}.dat"
 
-        writer = SSTableWriter(out_path, bloom_capacity=sum(s.entry_count for s in sstables))
+        writer = SSTableWriter(
+            out_path, bloom_capacity=sum(s.entry_count for s in sstables)
+        )
         new_sst = writer.write(_kway_merge(sstables))
 
         if new_sst is not None:
@@ -227,6 +234,7 @@ class CompactionEngine:
 # SSTable Registry (shared mutable state between Engine and Compaction)
 # ---------------------------------------------------------------------------
 
+
 class SSTableRegistry:
     """
     Thread-safe (asyncio + threading) registry of all live SSTables.
@@ -238,6 +246,7 @@ class SSTableRegistry:
 
     def __init__(self) -> None:
         import threading
+
         self._lock = threading.Lock()
         self._levels: dict[int, list[SSTable]] = {0: [], 1: [], 2: []}
         self._seq: int = 0
@@ -299,7 +308,9 @@ class SSTableRegistry:
                 except Exception as exc:
                     log.warning("Skipping corrupt SSTable %s: %s", f, exc)
 
-    def load_from_manifest(self, sstable_dir: Path, manifest_entries: list[dict[str, int]]) -> None:
+    def load_from_manifest(
+        self, sstable_dir: Path, manifest_entries: list[dict[str, int]]
+    ) -> None:
         """Load only SSTables listed in the MANIFEST."""
         with self._lock:
             for entry in manifest_entries:

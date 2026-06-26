@@ -1,4 +1,5 @@
 """Tests for BloomFilter — Phase 3."""
+
 from __future__ import annotations
 
 
@@ -72,9 +73,7 @@ def test_fp_rate_approximation():
     bf = BloomFilter(capacity=n, fp_rate=0.01)
     for i in range(n):
         bf.add(f"train:{i}")
-    fp_count = sum(
-        bf.might_exist(f"test:{i}") for i in range(n)
-    )
+    fp_count = sum(bf.might_exist(f"test:{i}") for i in range(n))
     fp_rate = fp_count / n
     assert fp_rate < 0.05, f"FP rate too high: {fp_rate:.2%}"
 

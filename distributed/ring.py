@@ -15,6 +15,7 @@ Algorithm:
 Virtual nodes (150 by default) ensure uniform key distribution even with
 heterogeneous hardware.
 """
+
 from __future__ import annotations
 
 import bisect
@@ -36,8 +37,8 @@ class ConsistentHashRing:
 
     def __init__(self, nodes: list[str], virtual_nodes: int = 150):
         self._virtual_nodes = virtual_nodes
-        self._ring: list[int] = []               # sorted hash values
-        self._node_map: dict[int, str] = {}      # hash → node_addr
+        self._ring: list[int] = []  # sorted hash values
+        self._node_map: dict[int, str] = {}  # hash → node_addr
         self._nodes: set[str] = set()
         self._lock = threading.Lock()
 

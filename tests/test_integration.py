@@ -1,4 +1,5 @@
 """Tests for StorageEngine integration — Phase 1–4."""
+
 from __future__ import annotations
 
 import pytest

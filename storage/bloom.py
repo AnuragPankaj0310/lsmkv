@@ -25,6 +25,7 @@ Serialization format (20-byte header + bit array):
   [8 bytes] count — number of keys added
   [variable] bit array bytes
 """
+
 from __future__ import annotations
 
 import hashlib

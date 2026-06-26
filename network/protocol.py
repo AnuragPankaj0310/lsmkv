@@ -20,6 +20,7 @@ Command structures (Python dicts encoded as msgpack):
     { "ok": False, "error": "reason" }    ← any error
     { "ok": True, "metrics": {...} }      ← METRICS
 """
+
 from __future__ import annotations
 
 import struct
@@ -38,6 +39,7 @@ VALID_COMMANDS = {"SET", "GET", "DEL", "PING", "METRICS", "REPLICATE"}
 # Encoding
 # ---------------------------------------------------------------------------
 
+
 def encode(obj: dict) -> bytes:
     """Encode a command/response dict to a length-prefixed msgpack frame."""
     body = msgpack.packb(obj, use_bin_type=True)
@@ -55,6 +57,7 @@ def encode_error(reason: str) -> bytes:
 # ---------------------------------------------------------------------------
 # Decoding
 # ---------------------------------------------------------------------------
+
 
 async def read_message(reader: "asyncio.StreamReader") -> dict:
     """
@@ -75,6 +78,7 @@ def decode(data: bytes) -> dict:
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
+
 
 def validate_command(msg: dict) -> tuple[bool, str]:
     """

@@ -15,6 +15,7 @@ On recovery:
 Design: static cluster config only — no dynamic membership (gossip).
 Adding nodes requires a config reload. This keeps focus on the storage engine.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -124,7 +125,9 @@ class HeartbeatManager:
 
                 writer.write(encode(self.PING_MSG))
                 await writer.drain()
-                resp = await asyncio.wait_for(read_message(reader), timeout=self.PING_TIMEOUT)
+                resp = await asyncio.wait_for(
+                    read_message(reader), timeout=self.PING_TIMEOUT
+                )
 
                 if resp.get("ok"):
                     changed = self._peers[addr].heartbeat_success()
@@ -150,5 +153,7 @@ class HeartbeatManager:
 
                 changed = self._peers[addr].heartbeat_failure()
                 if changed:
-                    log.warning("Peer %s is DEAD (missed=%d)", addr, self._peers[addr].missed)
+                    log.warning(
+                        "Peer %s is DEAD (missed=%d)", addr, self._peers[addr].missed
+                    )
                     self._on_failure(addr)

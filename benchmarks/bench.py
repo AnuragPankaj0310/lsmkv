@@ -22,6 +22,7 @@ Usage:
   # Save results to JSON:
   python benchmarks/bench.py --ops 10000 --output results.json
 """
+
 from __future__ import annotations
 # ruff: noqa: E402
 
@@ -48,6 +49,7 @@ from client.sdk import LsmkvClient
 # Utility
 # ---------------------------------------------------------------------------
 
+
 def _rand_key(existing: list[str] = None, miss_rate: float = 0.0) -> str:
     if existing and random.random() > miss_rate:
         return random.choice(existing)
@@ -72,9 +74,9 @@ def _print_results(name: str, latencies: list[float], elapsed: float, ops: int) 
     p99 = _percentile(latencies, 99) * 1000
     tput = ops / elapsed if elapsed > 0 else 0
 
-    print(f"\n{'─'*50}")
+    print(f"\n{'─' * 50}")
     print(f"  {name}")
-    print(f"{'─'*50}")
+    print(f"{'─' * 50}")
     print(f"  Operations : {ops:,}")
     print(f"  Total time : {elapsed:.2f}s")
     print(f"  Throughput : {tput:,.0f} ops/sec")
@@ -96,6 +98,7 @@ def _print_results(name: str, latencies: list[float], elapsed: float, ops: int) 
 # ---------------------------------------------------------------------------
 # LSMKV workloads
 # ---------------------------------------------------------------------------
+
 
 async def bench_write(client: LsmkvClient, ops: int) -> dict:
     latencies = []
@@ -154,6 +157,7 @@ async def bench_high_miss(client: LsmkvClient, keys: list[str], ops: int) -> dic
 # Redis workload (optional comparison)
 # ---------------------------------------------------------------------------
 
+
 async def bench_redis(host: str, port: int, ops: int) -> Optional[list[dict]]:
     try:
         import redis.asyncio as aioredis
@@ -172,7 +176,7 @@ async def bench_redis(host: str, port: int, ops: int) -> Optional[list[dict]]:
     keys = [f"bench:{i:07d}" for i in range(ops)]
 
     # Warm up
-    for k in keys[:min(1000, ops)]:
+    for k in keys[: min(1000, ops)]:
         await r.set(k, _rand_value())
 
     # Write
@@ -203,6 +207,7 @@ async def bench_redis(host: str, port: int, ops: int) -> Optional[list[dict]]:
 # Main
 # ---------------------------------------------------------------------------
 
+
 async def run_benchmark(
     host: str,
     port: int,
@@ -215,9 +220,7 @@ async def run_benchmark(
     print(f"\nLSMKV Benchmark — {ops:,} ops per workload")
     print(f"Target: {host}:{port}")
 
-    client = await LsmkvClient.create(
-        [f"{host}:{port}"], enable_heartbeat=False
-    )
+    client = await LsmkvClient.create([f"{host}:{port}"], enable_heartbeat=False)
 
     all_results = []
 
@@ -248,7 +251,7 @@ async def run_benchmark(
             json.dump(all_results, f, indent=2)
         print(f"\nResults saved to {output}")
 
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("Benchmark complete.")
 
 
@@ -263,15 +266,17 @@ def main() -> None:
     parser.add_argument("--output", default=None, help="Save results to JSON file")
     args = parser.parse_args()
 
-    asyncio.run(run_benchmark(
-        host=args.host,
-        port=args.port,
-        ops=args.ops,
-        redis=args.redis,
-        redis_host=args.redis_host,
-        redis_port=args.redis_port,
-        output=args.output,
-    ))
+    asyncio.run(
+        run_benchmark(
+            host=args.host,
+            port=args.port,
+            ops=args.ops,
+            redis=args.redis,
+            redis_host=args.redis_host,
+            redis_port=args.redis_port,
+            output=args.output,
+        )
+    )
 
 
 if __name__ == "__main__":

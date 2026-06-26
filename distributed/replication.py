@@ -14,6 +14,7 @@ The client receives an error and can retry (idempotent for SET/DEL).
 Connection pool: each target gets a persistent asyncio TCP connection.
 Connections are re-established automatically on failure.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,8 +25,8 @@ from network.protocol import encode, read_message
 
 log = logging.getLogger(__name__)
 
-_CONNECT_TIMEOUT = 3.0   # seconds to establish connection
-_WRITE_TIMEOUT = 5.0     # seconds to wait for replica ACK
+_CONNECT_TIMEOUT = 3.0  # seconds to establish connection
+_WRITE_TIMEOUT = 5.0  # seconds to wait for replica ACK
 
 
 class ReplicaConnection:
@@ -54,7 +55,9 @@ class ReplicaConnection:
                     )
                     return resp
                 except Exception as exc:
-                    log.warning("Replica %s attempt %d failed: %s", self._addr, attempt, exc)
+                    log.warning(
+                        "Replica %s attempt %d failed: %s", self._addr, attempt, exc
+                    )
                     await self._disconnect()
                     if attempt == 1:
                         raise

@@ -29,6 +29,7 @@ Storage Engine Metrics tracked here:
   - sstable_count
   - compaction_throughput
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -300,7 +301,9 @@ class StorageEngine:
             "bloom_filter_hit_rate": round(self.bloom_filter_hit_rate, 3),
             "sstable_count": self.sstable_count,
             "sstable_count_per_level": self.sstable_count_per_level,
-            "compaction_throughput_bytes_sec": round(self.compaction_throughput_bytes_sec, 1),
+            "compaction_throughput_bytes_sec": round(
+                self.compaction_throughput_bytes_sec, 1
+            ),
             "compaction_runs": self._compaction.compaction_runs,
             "memtable_size_bytes": self._memtable.size_bytes(),
             "memtable_entries": len(self._memtable),

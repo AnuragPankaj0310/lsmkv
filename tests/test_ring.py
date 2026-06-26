@@ -1,4 +1,5 @@
 """Tests for ConsistentHashRing — Phase 5."""
+
 from __future__ import annotations
 
 
@@ -30,7 +31,9 @@ def test_distribution_roughly_even():
     expected = total / len(NODES)
     for node, count in dist.items():
         deviation = abs(count - expected) / expected
-        assert deviation < 0.40, f"Node {node} got {count} keys (deviation={deviation:.0%})"
+        assert deviation < 0.40, (
+            f"Node {node} got {count} keys (deviation={deviation:.0%})"
+        )
 
 
 def test_get_replicas_returns_n_unique_nodes():
@@ -88,10 +91,9 @@ def test_stability_on_node_removal():
     after = {k: ring.get_node(k) for k in keys}
 
     # Keys previously on nodes 1 and 2 should be unchanged
-    unchanged = sum(
-        1 for k in keys
-        if before[k] != NODES[0] and after[k] == before[k]
-    )
+    unchanged = sum(1 for k in keys if before[k] != NODES[0] and after[k] == before[k])
     unchanged_ratio = unchanged / len(keys)
     # At least 60% of keys on surviving nodes should stay put
-    assert unchanged_ratio > 0.60, f"Too many keys moved: only {unchanged_ratio:.0%} stable"
+    assert unchanged_ratio > 0.60, (
+        f"Too many keys moved: only {unchanged_ratio:.0%} stable"
+    )

@@ -11,6 +11,7 @@ Each entry stores: (value: bytes, expiry_ts: float|None, is_tombstone: bool)
 
 Size tracking is approximate (key bytes + value bytes + 32 byte overhead).
 """
+
 from __future__ import annotations
 
 import time
@@ -132,6 +133,7 @@ class MemTable:
 # ------------------------------------------------------------------
 # Module-level helper (not a method — avoids repeated attribute lookups)
 # ------------------------------------------------------------------
+
 
 def _entry_size(key: str, entry: tuple) -> int:
     value, _, _ = entry

@@ -22,6 +22,7 @@ Storage Engine Metrics (from plan):
   lsmkv_compaction_runs_total{node}        Counter — compaction cycles
   lsmkv_bloom_skips_total{node}            Counter — SSTables skipped via Bloom filter
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,7 +42,19 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # Histogram buckets tuned for a local KV store (ms range)
-_LATENCY_BUCKETS = (0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0)
+_LATENCY_BUCKETS = (
+    0.0001,
+    0.0005,
+    0.001,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+)
 
 
 class MetricsCollector:
@@ -61,20 +74,20 @@ class MetricsCollector:
             "lsmkv_ops_total",
             "Total operations by type",
             ["cmd", "node"],
-            registry=self._registry
+            registry=self._registry,
         )
         self._latency = Histogram(
             "lsmkv_latency_seconds",
             "Operation latency",
             ["cmd", "node"],
             buckets=_LATENCY_BUCKETS,
-            registry=self._registry
+            registry=self._registry,
         )
         self._connections = Gauge(
             "lsmkv_connections",
             "Current open TCP connections",
             ["node"],
-            registry=self._registry
+            registry=self._registry,
         )
 
         # --- MemTable ---
@@ -82,14 +95,14 @@ class MetricsCollector:
             "lsmkv_memtable_size_bytes",
             "Current MemTable size in bytes",
             ["node"],
-            registry=self._registry
+            registry=self._registry,
         )
 
         self._memtable_entries = Gauge(
             "lsmkv_memtable_entries",
             "Current MemTable entry count",
             ["node"],
-            registry=self._registry
+            registry=self._registry,
         )
 
         # --- Storage Engine Metrics ---
@@ -97,49 +110,49 @@ class MetricsCollector:
             "lsmkv_write_amplification",
             "Write amplification: disk bytes written / client bytes written",
             ["node"],
-            registry=self._registry
+            registry=self._registry,
         )
 
         self._read_amplification = Gauge(
             "lsmkv_read_amplification",
             "Read amplification: avg SSTables read per logical GET",
             ["node"],
-            registry=self._registry
+            registry=self._registry,
         )
 
         self._bloom_hit_rate = Gauge(
             "lsmkv_bloom_filter_hit_rate",
             "Fraction of SSTable lookups eliminated by Bloom filter (higher = better)",
             ["node"],
-            registry=self._registry
+            registry=self._registry,
         )
 
         self._sstable_count = Gauge(
             "lsmkv_sstable_count",
             "Number of SSTable files on disk",
             ["node", "level"],
-            registry=self._registry
+            registry=self._registry,
         )
 
         self._compaction_throughput = Gauge(
             "lsmkv_compaction_throughput_bytes",
             "Compaction throughput in bytes per second",
             ["node"],
-            registry=self._registry
+            registry=self._registry,
         )
 
         self._compaction_runs = Counter(
             "lsmkv_compaction_runs_total",
             "Total compaction cycles completed",
             ["node"],
-            registry=self._registry
+            registry=self._registry,
         )
-        
+
         self._bloom_skips = Counter(
             "lsmkv_bloom_skips_total",
             "SSTables skipped via Bloom filter (no disk read required)",
             ["node"],
-            registry=self._registry
+            registry=self._registry,
         )
 
         self._prev_compaction_runs = 0
@@ -148,7 +161,7 @@ class MetricsCollector:
         self._runner = None
         self._site = None
         self._update_task = None
-    
+
     # ------------------------------------------------------------------
     # Update methods (called by server handlers)
     # ------------------------------------------------------------------
@@ -175,6 +188,7 @@ class MetricsCollector:
 
         async def metrics_handler(request):
             from prometheus_client import generate_latest
+
             self._refresh()
             return web.Response(
                 body=generate_latest(self._registry),
@@ -189,7 +203,9 @@ class MetricsCollector:
         log.info("Prometheus /metrics on port %d", port)
 
         # Background loop to keep gauges fresh
-        self._update_task = asyncio.create_task(self._update_loop(), name="metrics_update")
+        self._update_task = asyncio.create_task(
+            self._update_loop(), name="metrics_update"
+        )
 
     async def _update_loop(self) -> None:
         while True:
@@ -224,7 +240,6 @@ class MetricsCollector:
             self._compaction_runs.labels(node=node).inc(delta_runs)
         self._prev_compaction_runs = new_runs
 
-    
     async def close(self) -> None:
         if self._update_task is not None:
             self._update_task.cancel()

@@ -10,6 +10,7 @@ Usage:
 
 All commands read node addresses from config.json (or --nodes override).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,8 +28,12 @@ def _run(coro):
 
 
 @click.group()
-@click.option("--config", default="config.json", show_default=True, help="Path to config.json")
-@click.option("--nodes", default=None, help="Comma-separated node addresses (overrides config)")
+@click.option(
+    "--config", default="config.json", show_default=True, help="Path to config.json"
+)
+@click.option(
+    "--nodes", default=None, help="Comma-separated node addresses (overrides config)"
+)
 @click.pass_context
 def cli(ctx, config: str, nodes: Optional[str]):
     """LSMKV — distributed key-value store CLI."""
@@ -54,6 +59,7 @@ def cli(ctx, config: str, nodes: Optional[str]):
 @click.pass_context
 def set(ctx, key: str, value: str, ttl: Optional[float]):
     """SET key value — store a key."""
+
     async def _do():
         client = await LsmkvClient.create(ctx.obj["nodes"], enable_heartbeat=False)
         try:
@@ -74,6 +80,7 @@ def set(ctx, key: str, value: str, ttl: Optional[float]):
 @click.pass_context
 def get(ctx, key: str):
     """GET key — retrieve a value."""
+
     async def _do():
         client = await LsmkvClient.create(ctx.obj["nodes"], enable_heartbeat=False)
         try:
@@ -97,6 +104,7 @@ def get(ctx, key: str):
 @click.pass_context
 def delete(ctx, key: str):
     """DEL key — delete a key."""
+
     async def _do():
         client = await LsmkvClient.create(ctx.obj["nodes"], enable_heartbeat=False)
         try:
@@ -116,6 +124,7 @@ def delete(ctx, key: str):
 @click.pass_context
 def ping(ctx):
     """PING — check if server is alive."""
+
     async def _do():
         client = await LsmkvClient.create(ctx.obj["nodes"], enable_heartbeat=False)
         try:
@@ -134,6 +143,7 @@ def ping(ctx):
 @click.pass_context
 def metrics(ctx, node: Optional[str]):
     """METRICS — show storage engine metrics."""
+
     async def _do():
         client = await LsmkvClient.create(ctx.obj["nodes"], enable_heartbeat=False)
         try:

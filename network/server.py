@@ -12,6 +12,7 @@ Replication:
   On SET/DEL, the primary node forwards the command to all replicas
   before ACK-ing the client (synchronous replication).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -74,19 +75,24 @@ class LsmkvServer:
 
         # Start metrics HTTP server
         await self._metrics.start_http_server(self._metrics_port)
-        log.info("[%s] Metrics endpoint: http://%s:%d/metrics", self._node_id, self._host, self._metrics_port)
+        log.info(
+            "[%s] Metrics endpoint: http://%s:%d/metrics",
+            self._node_id,
+            self._host,
+            self._metrics_port,
+        )
 
         # Start TCP server
-        server = await asyncio.start_server(
-            self._handle_client, self._host, self._port
-        )
+        server = await asyncio.start_server(self._handle_client, self._host, self._port)
         log.info("[%s] Listening on %s:%d", self._node_id, self._host, self._port)
 
         # Graceful shutdown on SIGTERM / SIGINT
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             try:
-                loop.add_signal_handler(sig, lambda: asyncio.create_task(self._shutdown(server)))
+                loop.add_signal_handler(
+                    sig, lambda: asyncio.create_task(self._shutdown(server))
+                )
             except NotImplementedError:
                 pass  # Windows
 
@@ -248,6 +254,7 @@ class LsmkvServer:
         rep_msg["op"] = original_msg["cmd"]
 
         from distributed.replication import replicate_to
+
         await replicate_to(self._replication_targets, rep_msg)
 
     # ------------------------------------------------------------------
@@ -255,7 +262,9 @@ class LsmkvServer:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_config(cls, config_path: str = "config.json", node_index: int = 0) -> "LsmkvServer":
+    def from_config(
+        cls, config_path: str = "config.json", node_index: int = 0
+    ) -> "LsmkvServer":
         with open(config_path) as f:
             cfg = json.load(f)
 
@@ -291,6 +300,7 @@ class LsmkvServer:
 
 if __name__ == "__main__":
     import sys
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",

@@ -1,4 +1,5 @@
 """Tests for Compaction Engine — Phase 4."""
+
 from __future__ import annotations
 
 
@@ -7,14 +8,18 @@ from storage.memtable import MemTable
 from storage.sstable import SSTable, SSTableWriter
 
 
-def _write_sst(tmp_path, seq: int, entries: dict[str, bytes], tombstones: list[str] = None) -> SSTable:
+def _write_sst(
+    tmp_path, seq: int, entries: dict[str, bytes], tombstones: list[str] = None
+) -> SSTable:
     mt = MemTable()
     for k, v in sorted(entries.items()):
         mt.set(k, v)
-    for k in (tombstones or []):
+    for k in tombstones or []:
         mt.delete(k)
     path = tmp_path / f"sst_{seq:07d}.dat"
-    writer = SSTableWriter(path, bloom_capacity=max(len(entries) + len(tombstones or []), 1))
+    writer = SSTableWriter(
+        path, bloom_capacity=max(len(entries) + len(tombstones or []), 1)
+    )
     return writer.write(mt.items())
 
 
@@ -54,7 +59,10 @@ def test_merge_large(tmp_path):
     """K-way merge across 5 SSTables, 200 keys each (overlapping ranges)."""
     sstables = []
     for seq in range(1, 6):
-        entries = {f"key:{i:06d}": f"v{seq}".encode() for i in range(seq * 100, seq * 100 + 200)}
+        entries = {
+            f"key:{i:06d}": f"v{seq}".encode()
+            for i in range(seq * 100, seq * 100 + 200)
+        }
         sst = _write_sst(tmp_path, seq, entries)
         sstables.append(sst)
 
@@ -91,6 +99,7 @@ def test_registry_level_counts():
 
 class _MockSST:
     """Minimal SSTable mock for registry tests."""
+
     def __init__(self, seq: int):
         self.sequence = seq
 

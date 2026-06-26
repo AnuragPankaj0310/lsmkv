@@ -16,6 +16,7 @@ Features:
   - Heartbeat integration: dead nodes are removed from routing
   - Connection pooling: one persistent connection per node
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -130,7 +131,9 @@ class LsmkvClient:
     # Public API
     # ------------------------------------------------------------------
 
-    async def set(self, key: str, value: bytes | str, ttl: Optional[float] = None) -> None:
+    async def set(
+        self, key: str, value: bytes | str, ttl: Optional[float] = None
+    ) -> None:
         if isinstance(value, str):
             value = value.encode("utf-8")
         msg: dict = {"cmd": "SET", "key": key, "value": value}

@@ -15,6 +15,7 @@ Entry dict keys:
   val : bytes  — the value (b"" for DEL)
   ttl : float  — optional, seconds from ts (only present when SET with TTL)
 """
+
 from __future__ import annotations
 
 import os

@@ -29,6 +29,7 @@ Read path:
   2. Binary search sparse index → find largest index_key <= target_key
   3. Seek to that offset, scan forward until key found or key surpassed
 """
+
 from __future__ import annotations
 
 import os
@@ -54,6 +55,7 @@ _HEADER_SIZE = struct.calcsize(_HEADER_FMT)  # = 60 bytes
 # ---------------------------------------------------------------------------
 # Writer
 # ---------------------------------------------------------------------------
+
 
 class SSTableWriter:
     """
@@ -150,6 +152,7 @@ class SSTableWriter:
 # Reader
 # ---------------------------------------------------------------------------
 
+
 class SSTable:
     """
     Read-only view of an SSTable file.
@@ -217,7 +220,7 @@ class SSTable:
         self.load()
         assert self._bloom is not None
         return self._bloom.might_exist(key)
-    
+
     def get(self, key: str) -> Optional[bytes]:
         """
         Returns value bytes or None (not found, tombstone, or expired).
@@ -300,7 +303,7 @@ class SSTable:
 
     @property
     def max_key(self) -> Optional[str]:
-        """    Approximate upper bound.
+        """Approximate upper bound.
         Because the sparse index stores one entry every
         SPARSE_INTERVAL keys, the final sparse-index key
         may not be the true maximum key in the SSTable.

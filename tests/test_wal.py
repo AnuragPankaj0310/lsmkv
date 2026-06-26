@@ -1,4 +1,5 @@
 """Tests for WAL — Phase 1."""
+
 from __future__ import annotations
 
 import pytest
