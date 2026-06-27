@@ -27,6 +27,7 @@ from metrics.prometheus import MetricsCollector
 from distributed.ring import ConsistentHashRing
 from distributed.routing import RequestRouter
 from distributed.replication import send_request
+from distributed.shard_manager import ShardManager
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ class LsmkvServer:
         self._address = node_address or f"{host}:{port}"
         self._ring = ConsistentHashRing(self._cluster_nodes or [self._address])
         self._router = RequestRouter(self._ring)
+        self._shards = ShardManager(self._router)
 
         self._engine = StorageEngine(
             data_dir=data_dir,
@@ -90,7 +92,10 @@ class LsmkvServer:
             return await self._dispatch(msg)
 
         key = msg["key"]
-        owner = self._router.primary(key)
+        if self._shards.owns_key(self._address, key):
+            return await self._dispatch(msg)
+
+        owner = self._shards.primary(key)
 
         # We own the key.
         if owner == self._address:
@@ -292,7 +297,14 @@ class LsmkvServer:
 
         from distributed.replication import replicate_to
 
-        await replicate_to(self._replication_targets, rep_msg)
+        key = original_msg["key"]
+
+        targets = [
+            node
+            for node in self._shards.replicas(key)
+            if node != self._address
+        ]
+        await replicate_to(targets, rep_msg)
 
     # ------------------------------------------------------------------
     # Factory

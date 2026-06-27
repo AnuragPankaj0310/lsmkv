@@ -22,13 +22,17 @@ class RequestRouter:
         """
         return self.ring.get_node(key)
 
-    def replicas(self, key: str) -> list[str]:
+    def replicas(self, key: str, replication_factor: int = 2,
+    ) -> list[str]:
         """
-        Return replica nodes.
+        Return the replica set (including the primary).
+
+        replication_factor specifies how many nodes
+        should be returned.
         """
         return self.ring.get_replicas(
             key,
-            self.replication_factor,
+            replication_factor,
         )
     
     def add_node(self, address: str) -> None:
