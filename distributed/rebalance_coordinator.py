@@ -3,7 +3,6 @@ Coordinates cluster rebalancing.
 """
 
 from __future__ import annotations
-import time
 
 from distributed.migration import MigrationPlanner
 from distributed.migration_executor import MigrationExecutor
