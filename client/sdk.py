@@ -166,7 +166,10 @@ class LsmkvClient:
     async def metrics(self, node_addr: Optional[str] = None) -> dict:
         addr = node_addr or self._nodes[0]
         resp = await self._conns[addr].send({"cmd": "METRICS"})
-        return resp.get("metrics", {})
+        if not resp.get("ok", False):
+            raise ClientError(resp.get("error", "Unknown metrics error"))
+
+        return resp["metrics"]
 
     # ------------------------------------------------------------------
     # Routing

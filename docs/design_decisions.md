@@ -1,193 +1,400 @@
 # Design Decisions
 
-This document records the key engineering trade-offs made in LSMKV.
-Each decision is paired with the interview question it answers.
+This document explains the major engineering decisions behind **LSMKV**. Each section discusses the motivation, benefits, trade-offs, and the type of interview question the decision is intended to answer.
 
 ---
 
-## 1. Why LSM Tree instead of B-Tree?
+# 1. Why LSM Tree Instead of B-Tree?
 
-**Interview question:** *"Why did you choose an LSM tree?"*
+**Interview Question:** *Why did you choose an LSM Tree?*
 
-B-Trees write data in-place on disk. A single SET can cause multiple random
-page reads (to find the right leaf) and a random write. Random I/O on spinning
-disk is 100–1000× slower than sequential I/O. On SSDs, random writes cause
-write amplification at the device level.
+Traditional B-Trees update data in-place, requiring random disk reads and writes. While suitable for read-heavy workloads, random writes become increasingly expensive as datasets grow.
 
-LSM Trees convert random writes into sequential writes:
-- Every write lands in the in-memory MemTable (no disk I/O)
-- MemTable is periodically flushed as a new sequential SSTable file
-- Compaction merges SSTables sequentially
+LSMKV uses a **Log-Structured Merge (LSM) Tree**, which converts random writes into sequential writes.
 
-**Trade-off:** Reads may need to check multiple SSTables. This is mitigated by
-Bloom filters (skip 99% of SSTables for missing keys) and sparse indexes
-(binary search to the right position without reading the whole file).
+### Write Path
 
----
-
-## 2. Why Sparse Index instead of Dense Index?
-
-**Interview question:** *"How do you avoid loading entire SSTables into memory?"*
-
-A dense index stores one offset per key — at 1M keys with 64-byte keys, that's
-64MB of index per SSTable in memory. Unacceptable at scale.
-
-A sparse index stores one offset every N keys (N=128 here). Binary search
-on the sparse index gets you to within 128 keys of the target. A short
-sequential scan finds the exact key.
-
-Memory cost: 1M keys → 8K index entries → ~512KB. 125× reduction.
-
-This is exactly how LevelDB and RocksDB handle reads internally.
-
----
-
-## 3. Why Bloom Filters?
-
-**Interview question:** *"What happens when you look up a key that doesn't exist?"*
-
-Without Bloom filters: a missing key causes one read per SSTable file (O(N) disk
-reads where N = SSTable count). At 100 SSTables, a miss costs 100 disk reads.
-
-With Bloom filters: 99% of misses (at 1% false-positive rate) are caught in
-memory by checking the per-SSTable Bloom filter. No disk I/O.
-
-**Implementation detail:** Double hashing `h(key, i) = (h1(key) + i*h2(key)) % m`.
-Built from scratch using a `bytearray` bit array. No library — every line is
-explainable. Serialized into the SSTable header → loaded on startup.
-
-**Cost:** ~9.6 bits per key at 1% FP rate. For 1M keys: ~1.2MB per SSTable. Negligible.
-
----
-
-## 4. Why Immutable SSTables?
-
-**Interview question:** *"Why not update SSTables in place?"*
-
-Mutating a file shared between readers and writers requires locking. In a
-concurrent environment this kills performance.
-
-Immutable SSTables:
-- Zero locking needed during reads
-- Crash safety: a partially written SSTable is just discarded on recovery
-  (we write to a `.tmp` file and rename atomically)
-- Clean compaction: merge two immutable files into a new one, then delete
-  the originals — no need to handle partial overwrites
-
----
-
-## 6. Why Sequence Numbers?
-
-**Interview question:** *"How do you determine the latest value when multiple SSTables contain the same key?"*
-
-An LSM-tree may contain multiple versions of the same key across different SSTables. Rather than relying on SSTable creation time or filenames, every write is assigned a monotonically increasing sequence number.
-
-Example:
 ```text
-seq=101  SET user:1 Alice
-seq=102  SET user:1 Bob
+Client Write
+      │
+      ▼
+Write-Ahead Log (WAL)
+      │
+      ▼
+   MemTable
+      │
+      ▼
+ SSTable Flush
+      │
+      ▼
+Background Compaction
 ```
 
-During reads and compaction, the storage engine always keeps the record with the highest sequence number. This guarantees deterministic conflict resolution while keeping SSTables immutable.
+### Benefits
 
-**Trade-off:** Every record stores an additional sequence number, slightly increasing storage overhead, but greatly simplifying version management.
+* High write throughput
+* Sequential disk I/O
+* Better SSD performance
+* Crash-safe with WAL
 
----
+### Trade-off
 
-## 7. Why Write-Ahead Log (WAL)?
-
-**Interview question:** *"What happens if the process crashes before flushing to disk?"*
-
-The MemTable is in-memory. A crash loses all unflushed writes. The WAL fixes this:
-
-1. Append to WAL (fsync to disk)
-2. Write to MemTable
-3. Return OK to client
-
-On startup:
-- Load MANIFEST
-- Open active SSTables
-- Replay the remaining WAL entries
-
-When flushing a MemTable:
-1. Flush the MemTable to a new SSTable.
-2. fsync() the SSTable.
-3. Update the MANIFEST checkpoint.
-4. Truncate only the WAL entries covered by that checkpoint.
-
-This ordering guarantees that no acknowledged write is lost even if a crash occurs during flushing.
-
-**Key invariant:** No write that was ACK-ed to the client is ever lost.
+Reads may need to examine multiple SSTables. This is mitigated using Bloom Filters and Sparse Indexes.
 
 ---
 
-## 8. Why No Coordinator Node?
+# 2. Why Immutable SSTables?
 
-**Interview question:** *"How does the client know which node to talk to?"*
+**Interview Question:** *Why not update SSTables in place?*
 
-A coordinator is a single point of failure and adds one network hop to every
-request. Dynamo, Cassandra, and Redis Cluster all avoid this.
+Updating files in place requires locking and introduces crash consistency challenges.
 
-In LSMKV, the consistent hash ring lives in the client SDK. The client
-computes `hash(key) → primary_node` locally and opens a direct TCP connection.
+Instead, LSMKV stores data in immutable SSTables.
 
-No coordinator → no SPOF, one fewer network hop, simpler failure modes.
+### Benefits
 
-**Trade-off:** Every client must know the cluster topology. We solve this with
-static config (`config.json`) — acceptable for a fixed 3-node cluster.
+* Lock-free reads
+* Simple concurrent access
+* Atomic file replacement
+* Safe background compaction
+* Easier crash recovery
 
----
-
-## 9. Why Synchronous Replication Only?
-
-**Interview question:** *"How does replication work? What about availability vs. consistency?"*
-
-Supporting both synchronous and asynchronous replication (an AP/CP toggle) doubles
-testing complexity and requires quorum logic. For a portfolio project, the
-complexity is not worth the ambiguity.
-
-Synchronous replication gives a clean guarantee: a write is durable on N nodes
-before the client receives OK. The trade-off (higher write latency with more
-replicas) is documented and can be explained precisely in interviews.
-
-**The choice is: correct and explainable beats featureful and complicated.**
+Compaction creates new SSTables and removes obsolete ones without modifying existing files.
 
 ---
 
-## 10. Why Static Cluster Config?
+# 3. Why Sparse Indexes?
 
-**Interview question:** *"How do you handle adding or removing nodes?"*
+**Interview Question:** *How do you avoid loading huge indexes into memory?*
 
-Dynamic membership (gossip protocol, Raft-based cluster management) is a
-project by itself. Zookeeper, etcd, and the Raft paper cover this in depth.
+A dense index stores an offset for every key, consuming significant memory.
 
-Static config keeps focus on the storage engine — the differentiating part of
-this project. Adding a node requires updating `config.json` and restarting clients.
+LSMKV instead stores one index entry every fixed number of keys.
 
-For a production system, the answer is: use a gossip protocol (Cassandra) or
-a consensus service (etcd). This project demonstrates understanding of *why*
-you need dynamic membership — not implementing it is a deliberate scope decision.
+### Benefits
+
+* Small memory footprint
+* Fast binary search
+* Short sequential scan
+* Excellent cache locality
+
+This approach is similar to LevelDB and RocksDB.
 
 ---
 
-## 11. Why a MANIFEST File?
+# 4. Why Bloom Filters?
 
-Scanning every SSTable on startup becomes expensive as the database grows.
+**Interview Question:** *How do you reduce unnecessary disk reads?*
 
-The MANIFEST acts as the authoritative metadata for the storage engine, recording:
+Without Bloom Filters, every missing key requires checking every SSTable.
 
-- Active SSTables
-- SSTable levels
-- Latest checkpoint
+```
+GET key
+   │
+   ▼
+Bloom Filter
+   │
+   ├── Definitely Not Present → Skip SSTable
+   └── Possibly Present       → Search SSTable
+```
 
-Recovery becomes:
+### Benefits
 
+* Eliminates most unnecessary disk reads
+* Faster negative lookups
+* Low memory overhead
+* Configurable false-positive rate
+
+---
+
+# 5. Why Sequence Numbers?
+
+**Interview Question:** *How do you determine the newest version of a key?*
+
+The same key may exist in multiple SSTables.
+
+Example:
+
+```text
+Seq 101 → SET user1 Alice
+Seq 102 → SET user1 Bob
+```
+
+The storage engine always keeps the record with the highest sequence number during reads and compaction.
+
+### Benefits
+
+* Deterministic conflict resolution
+* Immutable storage
+* Simple merge logic
+
+### Trade-off
+
+Each record stores an additional sequence number.
+
+---
+
+# 6. Why Write-Ahead Logging (WAL)?
+
+**Interview Question:** *What happens if the server crashes before flushing the MemTable?*
+
+Every write follows this order:
+
+```text
+Append to WAL
+      │
+      ▼
+fsync()
+      │
+      ▼
+Update MemTable
+      │
+      ▼
+Return Success
+```
+
+If a crash occurs:
+
+1. Load the MANIFEST.
+2. Open active SSTables.
+3. Replay the remaining WAL entries.
+
+### Guarantee
+
+No acknowledged write is lost.
+
+---
+
+# 7. Why Consistent Hashing?
+
+**Interview Question:** *Why not use `hash(key) % number_of_nodes`?*
+
+Modulo hashing redistributes nearly every key whenever the cluster size changes.
+
+Consistent Hashing places both nodes and keys on a logical hash ring.
+
+### Benefits
+
+* Minimal key movement
+* Even key distribution
+* Horizontal scalability
+* Efficient node addition/removal
+
+Only the partitions owned by the affected node are redistributed.
+
+---
+
+# 8. Why Client-Side Routing?
+
+**Interview Question:** *Why doesn't the system use a coordinator node?*
+
+A coordinator introduces:
+
+* Additional network hop
+* Single point of failure
+* Throughput bottleneck
+
+Instead, the client computes:
+
+```text
+Key
+ │
+ ▼
+Hash Ring
+ │
+ ▼
+Primary Node
+```
+
+### Benefits
+
+* Lower latency
+* No central bottleneck
+* Better scalability
+
+### Trade-off
+
+Clients must know the cluster topology.
+
+---
+
+# 9. Why Synchronous Replication?
+
+**Interview Question:** *Why synchronous instead of asynchronous replication?*
+
+LSMKV acknowledges writes only after all configured replicas successfully persist the update.
+
+```text
+Client
+  │
+  ▼
+Primary
+  │
+  ▼
+Replicas
+  │
+  ▼
+ACK
+```
+
+### Benefits
+
+* Strong consistency
+* Predictable durability
+* Simple failure handling
+
+### Trade-off
+
+Higher write latency compared to asynchronous replication.
+
+---
+
+# 10. Why Streaming Key Migration?
+
+**Interview Question:** *How do you rebalance data without stopping the cluster?*
+
+Migrating the complete dataset at once would consume large amounts of memory and block operations.
+
+LSMKV migrates keys in batches.
+
+```text
+Export Batch
+     │
+     ▼
+Transfer
+     │
+     ▼
+Import
+     │
+     ▼
+Next Batch
+```
+
+### Benefits
+
+* Constant memory usage
+* Large dataset support
+* Progress tracking
+* Retry failed batches
+
+---
+
+# 11. Why Static Cluster Configuration?
+
+**Interview Question:** *Why not implement automatic node discovery?*
+
+Dynamic cluster membership requires distributed consensus or gossip protocols.
+
+LSMKV intentionally uses a static configuration file to keep the focus on storage engine and distributed data management concepts.
+
+### Benefits
+
+* Simple deployment
+* Easy debugging
+* Deterministic testing
+
+---
+
+# 12. Why a MANIFEST File?
+
+**Interview Question:** *Why store metadata separately?*
+
+Without a MANIFEST, every startup would require scanning every SSTable.
+
+The MANIFEST records:
+
+* Active SSTables
+* SSTable levels
+* Latest checkpoint
+
+Recovery process:
+
+```text
 Load MANIFEST
-↓
+      │
+      ▼
+Open SSTables
+      │
+      ▼
+Replay WAL
+```
 
-Open active SSTables
-↓
+### Benefits
 
-Replay remaining WAL
+* Faster startup
+* Efficient recovery
+* Simplified metadata management
 
-instead of scanning every file in the data directory.
+---
+
+# 13. Why Prometheus and Grafana?
+
+**Interview Question:** *Why expose metrics instead of relying only on logs?*
+
+Logs describe individual events.
+
+Metrics describe system behavior over time.
+
+LSMKV exports metrics including:
+
+* Logical Keys
+* Cluster Storage
+* SSTable Count
+* MemTable Size
+* MemTable Entries
+* Active Connections
+
+Prometheus periodically scrapes these metrics, while Grafana provides real-time dashboards.
+
+### Benefits
+
+* Operational visibility
+* Historical monitoring
+* Dashboarding
+* Alerting support
+
+---
+
+# 14. Why Docker Compose?
+
+**Interview Question:** *Why containerize the system?*
+
+The complete deployment consists of:
+
+* Three storage nodes
+* Prometheus
+* Grafana
+
+Docker Compose provides:
+
+* One-command deployment
+* Consistent environments
+* Simplified networking
+* Easy reproducibility
+
+```bash
+docker compose up --build
+```
+
+---
+
+# Summary
+
+LSMKV intentionally favors **simple, explainable engineering decisions** over maximum feature count.
+
+Key design choices include:
+
+* LSM Trees instead of B-Trees
+* Immutable SSTables
+* Sparse Indexes
+* Bloom Filters
+* Write-Ahead Logging
+* Consistent Hashing
+* Client-Side Routing
+* Synchronous Replication
+* Streaming Key Migration
+* Static Cluster Membership
+* Prometheus Monitoring
+* Docker-Based Deployment
+
+These choices demonstrate the core architectural ideas used by modern distributed storage systems such as **LevelDB, RocksDB, Cassandra, DynamoDB, and Bigtable**, while keeping the implementation approachable, maintainable, and suitable for learning distributed systems and storage engine internals.

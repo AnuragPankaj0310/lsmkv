@@ -32,7 +32,7 @@ import asyncio
 _LENGTH_FMT = ">I"
 _LENGTH_SIZE = struct.calcsize(_LENGTH_FMT)
 
-VALID_COMMANDS = {"SET", "GET", "DEL", "PING", "METRICS", "REPLICATE"}
+VALID_COMMANDS = {"SET", "GET", "DEL", "PING", "METRICS", "REPLICATE", "MIGRATE"}
 
 
 # ---------------------------------------------------------------------------
@@ -67,12 +67,12 @@ async def read_message(reader: "asyncio.StreamReader") -> dict:
     header = await reader.readexactly(_LENGTH_SIZE)
     (length,) = struct.unpack(_LENGTH_FMT, header)
     body = await reader.readexactly(length)
-    return msgpack.unpackb(body, raw=False)
+    return msgpack.unpackb(body, raw=False, strict_map_key=False)
 
 
 def decode(data: bytes) -> dict:
     """Decode a raw msgpack body (no length prefix)."""
-    return msgpack.unpackb(data, raw=False)
+    return msgpack.unpackb(data, raw=False, strict_map_key=False)
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +85,8 @@ def validate_command(msg: dict) -> tuple[bool, str]:
     Validate an incoming command dict.
     Returns (is_valid, error_reason).
     """
+    msg.setdefault("forwarded", False)
+    msg.setdefault("origin", None)
     cmd = msg.get("cmd")
     if not cmd:
         return False, "Missing 'cmd' field"

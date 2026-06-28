@@ -49,8 +49,13 @@ async def cluster(tmp_path):
             data_dir=str(data_dir),
             memtable_size_bytes=4 * 1024 * 1024,
             l0_compaction_trigger=4,
-            compaction_interval=999.0,  # disable auto-compaction in tests
+            compaction_interval=999.0,
             replication_targets=[a for j, a in enumerate(addrs) if j != i],
+
+            # ADD THESE TWO LINES
+            cluster_nodes=addrs,
+            node_address=addr,
+
             node_id=f"node-{i}",
         )
         servers.append(server)

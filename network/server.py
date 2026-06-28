@@ -21,9 +21,14 @@ import logging
 import signal
 from typing import Optional
 
-from network.protocol import encode_ok, encode_error, read_message, validate_command
+from network.protocol import encode, encode_ok, encode_error, read_message, validate_command
 from storage.engine import StorageEngine
 from metrics.prometheus import MetricsCollector
+from distributed.ring import ConsistentHashRing
+from distributed.routing import RequestRouter
+from distributed.replication import send_request
+from distributed.shard_manager import ShardManager
+from distributed.migration_executor import MigrationExecutor
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +52,8 @@ class LsmkvServer:
         l0_compaction_trigger: int = 4,
         compaction_interval: float = 30.0,
         replication_targets: Optional[list[str]] = None,
+        cluster_nodes: Optional[list[str]] = None,
+        node_address: Optional[str] = None,
         node_id: str = "node-1",
     ):
         self._host = host
@@ -55,6 +62,11 @@ class LsmkvServer:
         self._node_id = node_id
         self._client_tasks: set[asyncio.Task] = set()
         self._replication_targets = replication_targets or []
+        self._cluster_nodes = cluster_nodes or []
+        self._address = node_address or f"{host}:{port}"
+        self._ring = ConsistentHashRing(self._cluster_nodes or [self._address])
+        self._router = RequestRouter(self._ring)
+        self._shards = ShardManager(self._router)
 
         self._engine = StorageEngine(
             data_dir=data_dir,
@@ -64,6 +76,146 @@ class LsmkvServer:
         )
         self._metrics = MetricsCollector(engine=self._engine, node_id=node_id)
         self._connections: int = 0
+
+    async def _route_request(self, msg: dict) -> bytes:
+        """
+        Route client requests to the owning node.
+        """
+
+        cmd = msg["cmd"]
+
+        # Commands without a key are always handled locally.
+        if cmd in {"PING", "METRICS", "REPLICATE", "MIGRATE"}:
+            return await self._dispatch(msg)
+
+        # Already forwarded -> execute locally.
+        if msg.get("forwarded", False):
+            return await self._dispatch(msg)
+
+        key = msg["key"]
+        if self._shards.owns_key(self._address, key):
+            return await self._dispatch(msg)
+
+        owner = self._shards.primary(key)
+
+        # We own the key.
+        if owner == self._address:
+            return await self._dispatch(msg)
+
+        forward_msg = dict(msg)
+        forward_msg["forwarded"] = True
+        forward_msg["origin"] = self._address
+
+        response = await send_request(owner, forward_msg)
+
+        # Convert the decoded response back into the wire format.
+        return encode(response)
+    
+    def update_cluster(self, cluster_nodes: list[str]) -> None:
+        """
+        Update the cluster membership and rebuild routing.
+        """
+
+        self._cluster_nodes = cluster_nodes
+
+        self._ring = ConsistentHashRing(cluster_nodes)
+
+        self._router = RequestRouter(self._ring)
+
+        self._shards = ShardManager(self._router)
+
+    async def keys_to_migrate(
+        self,
+        new_cluster_nodes: list[str],
+    ) -> dict[str, list[str]]:
+        """
+        Return destination -> keys mapping after a topology change.
+        """
+
+        old_ring = self._ring
+        new_ring = ConsistentHashRing(new_cluster_nodes)
+
+        keys = await self._engine.all_keys()
+
+        migrations: dict[str, list[str]] = {}
+
+        for key in keys:
+            old_owner = old_ring.get_node(key)
+            new_owner = new_ring.get_node(key)
+
+            if (
+                old_owner == self._address
+                and new_owner != self._address
+            ):
+                migrations.setdefault(new_owner, []).append(key)
+
+        return migrations
+
+    async def rebalance_cluster(
+        self,
+        new_cluster_nodes: list[str],
+    ) -> int:
+        """
+        Perform the first stage of rebalancing.
+        """
+
+        migrations = await self.keys_to_migrate(new_cluster_nodes)
+
+        executor = MigrationExecutor(self._engine)
+
+        migrated = 0
+
+        for destination, keys in migrations.items():
+
+            async for batch_keys, exported in executor.export_key_batches(
+                keys
+            ):
+
+                success = False
+
+                for attempt in range(3):
+                    try:
+                        response = await send_request(
+                            destination,
+                            {
+                                "cmd": "MIGRATE",
+                                "data": exported,
+                            },
+                        )
+
+                        if response.get("ok"):
+                            success = True
+                            break
+
+                    except Exception:
+                        if attempt == 2:
+                            raise
+
+                if not success:
+                    raise RuntimeError(
+                        f"Migration to {destination} failed"
+                    )
+
+                await executor.delete_keys(batch_keys)
+
+                migrated += len(exported)
+
+        return migrated
+
+    async def on_cluster_changed(
+        self,
+        new_cluster_nodes: list[str],
+    ):
+        """
+        Handle a cluster topology change.
+
+        1. Rebalance keys.
+        2. Update local routing.
+        """
+
+        await self.rebalance_cluster(new_cluster_nodes)
+
+        self.update_cluster(new_cluster_nodes)
 
     # ------------------------------------------------------------------
     # Entry point
@@ -148,7 +300,7 @@ class LsmkvServer:
                     await writer.drain()
                     continue
 
-                response = await self._dispatch(msg)
+                response = await self._route_request(msg)
                 writer.write(response)
                 await writer.drain()
         except Exception as exc:
@@ -227,10 +379,32 @@ class LsmkvServer:
                 elif op == "DEL":
                     await self._engine.delete(key)
                 return encode_ok()
+            
+            elif cmd == "MIGRATE":
+                executor = MigrationExecutor(self._engine)
+                data = msg["data"]
+                await executor.import_keys(data)
+                return encode_ok(
+                    migrated=len(data)
+                )
 
             elif cmd == "METRICS":
-                snapshot = self._engine.metrics_snapshot()
+                snapshot = await self._engine.metrics_snapshot_async()
+                print(snapshot)
                 snapshot["connections"] = self._connections
+
+                import msgpack
+
+                try:
+                    msgpack.packb(
+                        {"ok": True, "metrics": snapshot},
+                        use_bin_type=True,
+                    )
+                    print("SERVER: metrics pack OK")
+                except Exception as e:
+                    print("SERVER: metrics pack FAILED:", e)
+                    raise
+
                 return encode_ok(metrics=snapshot)
 
             else:
@@ -255,7 +429,14 @@ class LsmkvServer:
 
         from distributed.replication import replicate_to
 
-        await replicate_to(self._replication_targets, rep_msg)
+        key = original_msg["key"]
+
+        targets = [
+            node
+            for node in self._shards.replicas(key)
+            if node != self._address
+        ]
+        await replicate_to(targets, rep_msg)
 
     # ------------------------------------------------------------------
     # Factory
@@ -290,6 +471,8 @@ class LsmkvServer:
             l0_compaction_trigger=cfg.get("l0_compaction_trigger", 4),
             compaction_interval=cfg.get("compaction_interval_seconds", 30.0),
             replication_targets=replicas,
+            cluster_nodes=nodes,
+            node_address=nodes[node_index],
             node_id=f"node-{node_index}",
         )
 

@@ -29,7 +29,7 @@ _CONNECT_TIMEOUT = 3.0  # seconds to establish connection
 _WRITE_TIMEOUT = 5.0  # seconds to wait for replica ACK
 
 
-class ReplicaConnection:
+class NodeConnection:
     """Persistent connection to one replica node."""
 
     def __init__(self, addr: str):
@@ -91,13 +91,13 @@ class ReplicaConnection:
 
 
 # Module-level connection pool
-_pool: dict[str, ReplicaConnection] = {}
+_connection_pool: dict[str, NodeConnection] = {}
 
 
-def _get_conn(addr: str) -> ReplicaConnection:
-    if addr not in _pool:
-        _pool[addr] = ReplicaConnection(addr)
-    return _pool[addr]
+def _get_connection(addr: str) -> NodeConnection:
+    if addr not in _connection_pool:
+        _connection_pool[addr] = NodeConnection(addr)
+    return _connection_pool[addr]
 
 
 async def replicate_to(targets: list[str], msg: dict) -> None:
@@ -108,7 +108,7 @@ async def replicate_to(targets: list[str], msg: dict) -> None:
     if not targets:
         return
 
-    tasks = [_get_conn(addr).send(msg) for addr in targets]
+    tasks = [_get_connection(addr).send(msg) for addr in targets]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     errors = []
@@ -122,5 +122,12 @@ async def replicate_to(targets: list[str], msg: dict) -> None:
         raise ReplicationError(f"Replication failed: {'; '.join(errors)}")
 
 
+async def send_request(target: str, msg: dict) -> dict:
+    """
+    Send a request to a single node and return its response.
+    """
+    return await _get_connection(target).send(msg)
+
 class ReplicationError(Exception):
     pass
+

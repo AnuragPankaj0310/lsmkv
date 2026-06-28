@@ -21,6 +21,8 @@ Storage Engine Metrics (from plan):
   lsmkv_compaction_throughput_bytes{node}  Gauge  — bytes/sec during compaction
   lsmkv_compaction_runs_total{node}        Counter — compaction cycles
   lsmkv_bloom_skips_total{node}            Counter — SSTables skipped via Bloom filter
+  lsmkv_total_keys{node}            Gauge  — Logical keys stored
+  lsmkv_disk_usage_bytes{node}      Gauge  — Disk usage in bytes
 """
 
 from __future__ import annotations
@@ -101,6 +103,20 @@ class MetricsCollector:
         self._memtable_entries = Gauge(
             "lsmkv_memtable_entries",
             "Current MemTable entry count",
+            ["node"],
+            registry=self._registry,
+        )
+
+        self._total_keys = Gauge(
+            "lsmkv_total_keys",
+            "Total logical keys stored",
+            ["node"],
+            registry=self._registry,
+        )
+
+        self._disk_usage = Gauge(
+            "lsmkv_disk_usage_bytes",
+            "Disk usage in bytes",
             ["node"],
             registry=self._registry,
         )
@@ -189,7 +205,7 @@ class MetricsCollector:
         async def metrics_handler(request):
             from prometheus_client import generate_latest
 
-            self._refresh()
+            await self._refresh()
             return web.Response(
                 body=generate_latest(self._registry),
                 content_type="text/plain",
@@ -211,17 +227,19 @@ class MetricsCollector:
         while True:
             await asyncio.sleep(5)
             try:
-                self._refresh()
+                await self._refresh()
             except Exception as exc:
                 log.debug("Metrics refresh error: %s", exc)
 
-    def _refresh(self) -> None:
+    async def _refresh(self) -> None:
         """Pull latest values from engine and update Prometheus gauges."""
-        snap = self._engine.metrics_snapshot()
+        snap = await self._engine.metrics_snapshot_async()
         node = self._node
 
         self._memtable_size.labels(node=node).set(snap["memtable_size_bytes"])
         self._memtable_entries.labels(node=node).set(snap["memtable_entries"])
+        self._total_keys.labels(node=node).set(snap.get("total_keys", 0))
+        self._disk_usage.labels(node=node).set(snap.get("disk_usage_bytes", 0))
         self._write_amplification.labels(node=node).set(snap["write_amplification"])
         self._read_amplification.labels(node=node).set(snap["read_amplification"])
         self._bloom_hit_rate.labels(node=node).set(snap["bloom_filter_hit_rate"])

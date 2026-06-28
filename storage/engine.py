@@ -294,20 +294,62 @@ class StorageEngine:
             return 0.0
         return self._compaction.total_bytes_compacted / dur
 
+    @property
+    def disk_usage_bytes(self):
+        total = 0
+        for path in Path(self._data_dir).rglob("*"):
+            if path.is_file():
+                total += path.stat().st_size
+        return total
+
     def metrics_snapshot(self) -> dict:
         return {
             "write_amplification": round(self.write_amplification, 3),
             "read_amplification": round(self.read_amplification, 3),
             "bloom_filter_hit_rate": round(self.bloom_filter_hit_rate, 3),
             "sstable_count": self.sstable_count,
-            "sstable_count_per_level": self.sstable_count_per_level,
+            "sstable_count_per_level": {
+                str(level): count
+                for level, count in self.sstable_count_per_level.items()
+            },
             "compaction_throughput_bytes_sec": round(
                 self.compaction_throughput_bytes_sec, 1
             ),
             "compaction_runs": self._compaction.compaction_runs,
             "memtable_size_bytes": self._memtable.size_bytes(),
             "memtable_entries": len(self._memtable),
+            "disk_usage_bytes": self.disk_usage_bytes,
         }
+    
+    async def metrics_snapshot_async(self):
+        """
+        Metrics requiring async operations.
+        """
+        snapshot = self.metrics_snapshot()
+
+        keys = await self.all_keys()
+
+        snapshot["total_keys"] = len(keys)
+        snapshot["disk_usage_bytes"] = self.disk_usage_bytes
+        return snapshot
+
+    async def all_keys(self) -> list[str]:
+        """
+        Return every live key known to this storage engine.
+        """
+
+        keys = set()
+
+        # MemTable
+        for key, *_ in self._memtable.items():
+            keys.add(key)
+
+        # SSTables
+        for table in self._registry.all_sstables_newest_first():
+            for key, *_ in table.scan():
+                keys.add(key)
+
+        return sorted(keys)
 
     # ------------------------------------------------------------------
     # Factory from config
