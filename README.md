@@ -84,8 +84,6 @@ The project combines three major components:
 
 # Architecture Overview
 
-![Architecture](docs/screenshots/architecture-overview.png)
-
 ```
                          +----------------------+
                          |     Client SDK       |
